@@ -1,10 +1,10 @@
 # Various experiments related to AGI
 
-How would we build an AGI agent? Fundamentally there are two approaches. 
-- Bottom-Up approachs would bring together models, algorithms, modules with specific capabilities and attempt to put those together in a composite AGI system.
-- On the other hand, top-Down approaches attempt to build the simplest and least capable AGI agent first and then iterate to add capabilities.
+How would we build an AGI agent?
+- Bottom-Up approachs aim to bring together models, algorithms, modules with specific capabilities and attempt to put those together in a composite AGI system.
+- Top-Down approaches attempt to build the simplest and least capable "minimal" AGI agent first and then iterate to add capabilities.
 
-I am interested in investigating Top-Down approaches to AGI.
+I am investigating Top-Down approaches to AGI.
 
 How would we describe such a "minimal" AGI system? What capabilities would it have? How would we recognize it as an AGI? Would there be a single fundamental algorithm? What properties should such algorithm have? How would that algorithm produce an agent that exhibits representation learning and reinforcement learning?
 
