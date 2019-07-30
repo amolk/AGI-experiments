@@ -1,2 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtualenv
+.venv/
+venv/
+ENV/
+
 .DS_Store
+
 .ipynb_checkpoints
+data/
