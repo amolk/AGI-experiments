@@ -1,5 +1,15 @@
 # Various experiments related to AGI
 
+How would we build an AGI agent? Fundamentally there are two approaches. 
+- Bottom-Up approachs would bring together models, algorithms, modules with specific capabilities and attempt to put those together in a composite AGI system.
+- On the other hand, top-Down approaches attempt to build the simplest and least capable AGI agent first and then iterate to add capabilities.
+
+I am interested in investigating Top-Down approaches to AGI.
+
+How would we describe such a "minimal" AGI system? What capabilities would it have? How would we recognize it as an AGI? Would there be a single fundamental algorithm? What properties should such algorithm have? How would that algorithm produce an agent that exhibits representation learning and reinforcement learning?
+
+I have been exploring these questions for a while now. This repository contains some of the investigations.
+
 A few interesting notebooks -
 - Representing values as histogram [obviates the need for precision weighting](https://github.com/amolk/AGI-experiments/blob/master/Free%20Energy%20Minimization%20Framework/12/13.ipynb).
 - Can we learn latent variable probability distributions directly? This notebook explores the [Quantized Distribution Auto Encoder](https://github.com/amolk/AGI-experiments/blob/master/QDL%20-%20Quantized%20Distribution%20Learning/04.ipynb) approach.
