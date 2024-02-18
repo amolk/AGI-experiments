@@ -49,3 +49,16 @@ Made first neuron to be sensitive to the sensory input and second neuron sensiti
 
 This contrast between the two neurons' firing rates should further increase with lateral inhibition, that we will take up in the next experiment.
 
+## experiment1.5.py
+![Output frequency](<images/1.5.output frequency.png>)
+
+Set lateral weights between the two neurons as -1. Now we see that the we get full contrast in the frequency of the two neurons.
+0-25% steps: Signal that neuron 1 is sensitive to
+25-50% steps: Signal that neuron 2 is sensitive to
+50-75% steps: A different signal that one of the two neuron is relatively more sensitive to
+75-100% steps: White noise.
+
+Note full contrast in first 2 segments. Some contrast in the second segment, and no contrast (same frequency) in the last white noise segment.
+
+Next: Set up top down prediction connections from neurons back to sensory input.
+
