@@ -38,3 +38,14 @@ Implemented AGC. Frequency is LI with 0-1 range. Threshold is set to 1+frequency
 
 Next, set up two neurons with specific input patterns, and show that alternating the input patterns activates them accordingly. That would be a set up for lateral inhibition experiment after that.
 
+## experiment1.4.py
+Made first neuron to be sensitive to the sensory input and second neuron sensitive to the exact opposite signal. We can see that the sensitive neuron has significantly higher frequency of firing than the other neuron. In the second half of the simulation, input switches to the opposite signal, and the other neuron fires more.
+
+*Output spikes*
+![Output spikes](<images/1.4.output spikes.png>)
+
+*Output frequency*
+![Output frequency](<images/1.4.output frequency.png>)
+
+This contrast between the two neurons' firing rates should further increase with lateral inhibition, that we will take up in the next experiment.
+
