@@ -19,3 +19,8 @@ Tried with nengo. Realized that Node to Node connections are implemented as deco
 ## experiment1.1.py
 Tried with snnTorch. Custom connections are not clean.
 
+## experiment1.2.py
+Build custom spiking neural network framework
+(5,5) sensory input connected to (1,1) ensemble
+Next, add dynamic gain control (simulate fatigue) by adjusting threshold
+
