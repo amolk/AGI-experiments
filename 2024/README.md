@@ -53,12 +53,42 @@ This contrast between the two neurons' firing rates should further increase with
 ![Output frequency](<images/1.5.output frequency.png>)
 
 Set lateral weights between the two neurons as -1. Now we see that the we get full contrast in the frequency of the two neurons.
-0-25% steps: Signal that neuron 1 is sensitive to
-25-50% steps: Signal that neuron 2 is sensitive to
-50-75% steps: A different signal that one of the two neuron is relatively more sensitive to
-75-100% steps: White noise.
+* 0-25% steps: Signal that neuron 1 is sensitive to
+* 25-50% steps: Signal that neuron 2 is sensitive to
+* 50-75% steps: A different signal that one of the two neuron is relatively more sensitive to
+* 75-100% steps: White noise.
 
 Note full contrast in first 2 segments. Some contrast in the second segment, and no contrast (same frequency) in the last white noise segment.
 
 Next: Set up top down prediction connections from neurons back to sensory input.
 
+## experiment1.6.py
+
+* Add top down predictions.
+* Ensemble gets mixed input = sensory input + top down predictions. Create a "Collector" class to mix signals.
+* AGC to achieve target frequency.
+* Negative afferent connections to refine patterns.
+
+Experiments runs for 1000 time steps. Each block of 200 time steps gets a different sensory input. The resulting ensemble behavior shows interesting dynamics.
+
+* 0-200: Pattern that neuron 1 is sensitive to.
+* 201-400: Pattern that neuron 2 is sensitive to.
+* 401-600: No input spikes.
+* 601-800: Pattern that a partial pattern (L shape) of neuron 2's pattern (square frame shape).
+* 801-1000: Mix of neuron 1 and neuron 2's patterns.
+
+![Activation](<images/1.6.activation.png>)
+![Threshold](<images/1.6.threshold.png>)
+![Spikes](<images/1.6.spikes.png>)
+![Output frequency](<images/1.6.output frequency.png>)
+See [Videos](<images/1.6.videos.html>) showing top down prediction and combined (smoothed) input.
+
+Behaviors
+* 0-200: Pattern that neuron 1 is sensitive to. Neuron 1 rapidly starts firing, reaching 0.65 frequency, but its threshold gets adjusted such that it settles down to about 0.3 frequency. This shows [spike frequency adaptation](https://www.researchgate.net/figure/Different-Known-types-of-neurons-correspond-to-different-values-of-the-parameters-a-b_fig3_335663585) type activity.
+![Types of neural activity](https://www.researchgate.net/profile/Giacomo-Indiveri/publication/221373399/figure/fig3/AS:669218097856547@1536565436624/Spike-frequency-adaptation-a-adaptation-internal-signal-related-to-the-Calcium.png)
+* 201-400: Pattern that neuron 2 is sensitive to. Notice the transition period where neuron 1's activation rapidly declines both due to mismatched input and negative lateral connectivity from neuron 2 as neuron 2 starts firing. While neuron 2 is firing, it clamps down the activity of neuron 1.
+* 401-600: No input spikes. This shows [working memory](https://www.frontiersin.org/articles/10.3389/fncel.2021.631485/full) type dynamics. As no sensory input comes in, the ensemble is driven solely through top down activation. Although weak (activation hardly reaches above 0.5), threshold adaptation results in sustained firing. The result is that the last seen pattern (during 201-400) says in working memory until a new pattern wipes it out starting at 600. Although, persistant firing like this [may not](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6083456/  ) underly working memory in the brain.
+* 601-800: Pattern that a partial pattern (L shape) of neuron 2's pattern (square frame shape). This pattern results in neuron 2 getting activited, which sends down neuron 2's pattern as top down prediction. When mixed with sensory input, it "completes" the incomplete sensory pattern, which can be thought of as a demonstration of [illusory contours](https://en.wikipedia.org/wiki/Illusory_contours).
+![Illusory contours example](http://mesosyn.com/mental8-10b.jpg)
+* 801-1000: Mix of neuron 1 and neuron 2's patterns. Here we see neuron 1 and 2 compete for activity via lateral inhibition. This demonstrates [bistable perception](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2018.00589/full). 
+![Bistable perception](https://www.frontiersin.org/files/Articles/344093/fpsyg-09-00589-HTML/image_m/fpsyg-09-00589-g001.jpg)
