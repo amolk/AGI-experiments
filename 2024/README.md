@@ -16,3 +16,6 @@ Note: The prediction is be for the next time step, i.e. the neuron defines a tra
 ## experiment1.py
 Tried with nengo. Realized that Node to Node connections are implemented as decoded value, not individual spikes, so not suitable.
 
+## experiment1.1.py
+Tried with snnTorch. Custom connections are not clean.
+
