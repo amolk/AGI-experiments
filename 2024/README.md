@@ -24,3 +24,17 @@ Build custom spiking neural network framework
 (5,5) sensory input connected to (1,1) ensemble
 Next, add dynamic gain control (simulate fatigue) by adjusting threshold
 
+## experiment1.3.py
+Implemented AGC. Frequency is LI with 0-1 range. Threshold is set to 1+frequency, so 1-2 range.
+
+*Sensory input spikes*
+![Sensory input spikes](images/1.3.spikes.png)
+
+*Firing frequency*
+![Firing frequency](images/1.3.frequency.png)
+
+*Output spikes*
+![Output spikes](<images/1.3.output spikes.png>)
+
+Next, set up two neurons with specific input patterns, and show that alternating the input patterns activates them accordingly. That would be a set up for lateral inhibition experiment after that.
+

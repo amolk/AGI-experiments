@@ -1,2 +1,1 @@
-nengo
-nengo-gui
+snntorch
