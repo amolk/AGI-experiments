@@ -137,13 +137,29 @@ class Leaky(nn.Module):
         self.activation += (1 - self.activation) * self.alpha * x
 
 
+# Running average integrator neuron (no firing)
+class RunningAverage(nn.Module):
+    def __init__(self, shape=(5, 5), beta=0.95):
+        super(RunningAverage, self).__init__()
+        self.beta = beta
+        self.shape = shape
+        self.activation = torch.zeros(shape)
+
+    def forward(self, x):
+        assert x.shape == self.shape
+        # assert x.dtype == torch.bool
+
+        # decay
+        self.activation = self.beta * self.activation + (1 - self.beta) * x
+
+
 class Ensemble(nn.Module):
     def __init__(
         self,
         shape=(5, 5),
         beta=0.9,
         base_threshold=1.0,
-        target_frequency=0.25,
+        target_frequency=0.2,
         reset_mechanism="zero",
         auto_gain_control=True,
         lateral_connections=True,
@@ -161,7 +177,7 @@ class Ensemble(nn.Module):
         self.spikes = torch.zeros(shape, dtype=torch.bool)
         if auto_gain_control:
             self.threshold = torch.ones(shape) * self.base_threshold
-            self.frequency = Leaky(shape)
+            self.frequency = RunningAverage(shape)
         else:
             self.threshold = self.base_threshold
 
@@ -185,8 +201,8 @@ class Ensemble(nn.Module):
 
         if self.auto_gain_control:
             self.frequency(self.spikes)
-            self.threshold[self.frequency.activation > self.target_frequency] += 0.1
-            self.threshold[self.frequency.activation < self.target_frequency] /= 1.1
+            self.threshold[self.frequency.activation > self.target_frequency] += 0.05
+            self.threshold[self.frequency.activation < self.target_frequency] /= 1.05
 
         if self.reset_mechanism == "zero":
             self.activation[self.spikes] = 0.0
@@ -199,10 +215,11 @@ class Ensemble(nn.Module):
 
 
 class SensoryInput(nn.Module):
-    def __init__(self, shape=(5, 5), pattern="square"):
+    def __init__(self, shape=(5, 5), pattern="square", noise=0.05):
         super(SensoryInput, self).__init__()
         self.shape = shape
         self.num_steps = 100
+        self.noise = noise
 
         if pattern == "square":
             self.signal = torch.zeros(shape)
@@ -234,14 +251,23 @@ class SensoryInput(nn.Module):
             self.signal[-1, :] = 1
             self.signal[:, 0] = 1
             self.signal[:, -1] = 1
+        elif pattern == "empty":
+            self.signal = torch.zeros(shape)
         elif pattern == "random":
             self.signal = torch.rand(shape)
+
         self.spike_data = spikegen.rate(self.signal * 0.5, num_steps=self.num_steps)
         self.t = 0
 
     def forward(self):
         self.t += 1
-        return self.spike_data[self.t % self.num_steps]
+        spikes = self.spike_data[self.t % self.num_steps].clone()
+
+        # add some noise (set 5% pixels to 0 and 5% to 1)
+        spikes[torch.rand(self.shape) < self.noise] = 0
+        spikes[torch.rand(self.shape) < self.noise] = 1
+
+        return spikes
 
 
 class Connection(nn.Module):
@@ -283,6 +309,9 @@ class Network(nn.Module):
         self.sensory_input_mix = SensoryInput(
             shape=self.sensory_input_shape, pattern="mix"
         )
+        self.sensory_input_empty = SensoryInput(
+            shape=self.sensory_input_shape, pattern="empty"
+        )
         self.ensemble1_input_collector = Collector(shape=self.sensory_input_shape)
 
         self.ensemble1 = Ensemble(
@@ -291,7 +320,7 @@ class Network(nn.Module):
             base_threshold=0.1,
         )
         if lateral_connections:
-            self.ensemble1.lateral_weights = torch.tensor([[0.0, -0.75], [-0.75, 0.0]])
+            self.ensemble1.lateral_weights = torch.tensor([[0.0, -0.5], [-0.5, 0.0]])
 
         # connect collector to ensemble
         self.collector_to_ensemble_connection = Connection(
@@ -329,7 +358,7 @@ class Network(nn.Module):
 
     def forward(self, time_steps=100):
         history = defaultdict(list)
-        smoothed_input = Leaky(shape=self.sensory_input_shape, alpha=0.5, beta=0.95)
+        smoothed_input = RunningAverage(shape=self.sensory_input_shape)
 
         for step in range(time_steps):
             self.ensemble1_input_collector.reset()
@@ -340,8 +369,7 @@ class Network(nn.Module):
             elif step > time_steps * 3 // 5:
                 x = self.sensory_input2()
             elif step > time_steps * 2 // 5:
-                # x = (torch.rand(self.sensory_input_shape) > 0.5) * 1.0
-                x = torch.zeros(self.sensory_input_shape)
+                x = self.sensory_input_empty()
             elif step > time_steps * 1 // 5:
                 x = self.sensory_input3()
             else:
@@ -352,7 +380,7 @@ class Network(nn.Module):
             # top-down prediction -> collector
             if self.prediction_mixed_input:
                 prediction = self.top_down_connection(
-                    self.ensemble1.frequency.activation * self.prediction_precision_gain
+                    self.ensemble1.spikes.float() * self.prediction_precision_gain
                 )
                 history["ensemble1_prediction"].append(prediction.clone())
                 self.ensemble1_input_collector(prediction)
@@ -405,7 +433,7 @@ class Network(nn.Module):
             )
             f.write("<h2>Input (smoothed)</h2>")
             f.write(anim.to_html5_video())
-        # anim.save("images/ensemble1_input.gif")
+        anim.save("images/ensemble1_input.gif")
         print("Done")
 
 

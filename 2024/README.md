@@ -92,3 +92,36 @@ Behaviors
 ![Illusory contours example](http://mesosyn.com/mental8-10b.jpg)
 * 801-1000: Mix of neuron 1 and neuron 2's patterns. Here we see neuron 1 and 2 compete for activity via lateral inhibition. This demonstrates [bistable perception](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2018.00589/full). 
 ![Bistable perception](https://www.frontiersin.org/files/Articles/344093/fpsyg-09-00589-HTML/image_m/fpsyg-09-00589-g001.jpg)
+
+Notes:
+* Although prediction is for t+T, where T is the time constant of the layer, for a sensory layer, T=1 and X_t+T~=X_t because most sensory input is slow changing so essentially static for very small T. This leads to a simple change detector in first layer because prediction is always to remain static. In higher layers with longer T, prediction starts to be significantly different from current state. Same learning mechanism should lead to both configurations.
+
+## experiment1.7.py
+
+Attention!
+
+* Mechanism: Predict that a certain part of the afferent space will have increased firing rate contrast. Moving muscles to attend to that part of the (visual) space results in increased contrast of the neurons sampling that region of space due to higher foveal sensor density. We could mediate this through increased target firing rate in that region. The eye muscle movement can be implemented through learning, but for this experiment we will do so programmatically. This is fine because for other modalities, the "muscles" to focus on part of the space are virtual, like for hearing in humans. We don't move our ears like cats, we only attend to certain subspace via software based gain.
+
+How to determine where to attend?
+Prediction error = diff between prediction and sensory input contrast
+Contrast = (Signal freq - target freq).(absolute).(NxN avg conv filter)
+
+Two cases here -
+
+1. prediction high contrast, sensory low contrast: Investigate because I expect to see something there
+2. prediction low contrast, sensory high contrast: Investigate because there is something I didn't expect
+
+In order for contrast computation to work, all neurons must fire at target rate, even those that don't receive any sensory input. Maybe sensory input needs to be noisy so all neurons get a chance to fire and attempt to reach target frequency. That would also result in only the "changes in frequency" showing up as error, thus doing background subtraction. Also [Troxler's fading](https://en.wikipedia.org/wiki/Troxler%27s_fading) of static inputs.
+
+So first, I'll add some noise to the input to see if I can get all neurons to fire near target frequency and only transient swings in frequency when input pattern changes.
+
+After adding 5% noise to sensory input spikes, we get the following -
+![Noisy sensory input](<images/1.7.sensory input.png>)
+![Spikes](<images/1.7.spikes.png>)
+![Output frequency](<images/1.7.output frequency.png>)
+
+Note that in the first "blue" segment, "orange" gets a chance to fire due to the noise. This type of pure sensory input and pure neuron selectivity is atypical. In natural settings, expect more frequent activation of the non-selective neurons.
+
+Also note that the neurons now toggle, but fire rarely, for empty input. This can be thought of as closed eye hallucinations or [phosphenes](https://my.clevelandclinic.org/health/symptoms/24888-phosphenes). The neurons also toggle for the mixed input, but at a higher rate. This is because part of the input supports the current hypothesis, which is amplified momentarily till the other hypothesis rises up and the cycle repeats.
+
+We will take up attention in experiment 1.8.
