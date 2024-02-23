@@ -125,3 +125,28 @@ Note that in the first "blue" segment, "orange" gets a chance to fire due to the
 Also note that the neurons now toggle, but fire rarely, for empty input. This can be thought of as closed eye hallucinations or [phosphenes](https://my.clevelandclinic.org/health/symptoms/24888-phosphenes). The neurons also toggle for the mixed input, but at a higher rate. This is because part of the input supports the current hypothesis, which is amplified momentarily till the other hypothesis rises up and the cycle repeats.
 
 We will take up attention in experiment 1.8.
+
+## experiment1.8.py
+
+Ok, now let's take up prediction error driven attention.
+
+Top down prediction may have areas of input space that are irrelevant. Those areas wil not be attended to. Among areas that are relevant, any difference between prediction and sensory input needs to be attended to.
+
+error = (running_average(sensory input) - running_average(prediction)).abs() * running_average(prediction)
+
+The multiplication of prediction average is to ensure that error is only considered for regions that we have predictions for.
+
+Facing a challenge - the scales of sensory input and prediction are different, so how to compute difference? normalize? expect prediction to match scale? I think global normalization is a decent approximation for local (laterally influenced), frequency adaptation based ensembles in front of sensory input and prediction. But why should the scales be different if all neurons are frequency targetted? Need to investigate that before trying to solve this "issue".
+
+Switched to using riders to work around both instantaneous and longer term scale issues. Now doing
+prediction_error = (sensory input rider - prediction rider).abs()
+
+![Prediction error](<images/1.8.prediction error.png>)
+Seeing some expected results. For instance, when L pattern is shown, frame pattern is predicted and the diff is the missing two sides of the frame. The agent should attend there to gather more evidence for the top down proposal of the frame pattern.
+
+Here is the [full video](<images/1.8.video.html>).
+
+A few open threads -
+
+* How to property mix prediction error with sensory input and prediction to become ensemble input?
+* Interpret baseline frequency as no evidence, higher frequency as evidence and lower frequency as negative evidence? How does this relate to inhibitary neurons/connections?

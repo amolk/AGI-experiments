@@ -1,11 +1,12 @@
 # %%
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 import matplotlib.pyplot as plt
 import snntorch as snn
 import snntorch.spikeplot as splt
 import torch
 import torch.nn as nn
+from matplotlib import animation
 from snntorch import spikegen
 from snntorch import spikeplot as splt
 
@@ -26,11 +27,19 @@ def plot_voltage(mem_data, title="Membrane potential"):
     plt.show()
 
 
+AnimatorConfig = namedtuple("AnimatorConfig", ["title", "data", "vmin", "vmax"])
+
+
 # /Users/amolk/.pyenv/versions/3.10.5/envs/2024/lib/python3.10/site-packages/snntorch/spikeplot.py
 # Changes:
 #   - Added vmin and vmax parameters to animator
 def animator(
-    data, fig, ax, num_steps=False, interval=40, vmin=0.0, vmax=1.0, cmap="plasma"
+    configs: list[AnimatorConfig],
+    nrows=1,
+    ncols=1,
+    num_steps=False,
+    interval=40,
+    cmap="plasma",
 ):
     """Generate an animation by looping through the first dimension of a
     sample of spiking data.
@@ -85,19 +94,37 @@ def animator(
     :rtype: FuncAnimation
 
     """
+    assert len(configs) == nrows * ncols
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 10))
+    if len(configs) == 1:
+        axs = [axs]
+
+    # datas = [c.data.cpu() for c in configs]
+    # vmins = [c.vmin for c in configs]
+    # vmaxs = [c.vmax for c in configs]
 
     if not num_steps:
-        num_steps = data.size()[0]
+        num_steps = configs[0].data.size()[0]
 
-    data = data.cpu()
-    camera = splt.Camera(fig)
     plt.axis("off")
 
-    # iterate over time and take a snapshot with celluloid
-    for step in range(num_steps):  # im appears unused but is required by camera.snap()
-        im = ax.imshow(data[step], cmap=cmap, vmin=vmin, vmax=vmax)  # noqa: F841
-        camera.snap()
-    anim = camera.animate(interval=interval)
+    artists = []
+
+    for step in range(num_steps):
+        artist = []
+        for i in range(len(configs)):
+            config = configs[i]
+            axs[i].axis("off")
+            axs[i].set_title(config.title)
+            im = axs[i].imshow(
+                config.data[step], cmap=cmap, vmin=config.vmin, vmax=config.vmax
+            )
+            artist.append(im)
+        artists.append(artist)
+
+    anim = animation.ArtistAnimation(
+        fig, artists, interval=interval, blit=False, repeat_delay=1000
+    )
 
     return anim
 
@@ -151,6 +178,25 @@ class RunningAverage(nn.Module):
 
         # decay
         self.activation = self.beta * self.activation + (1 - self.beta) * x
+
+
+# Rider - Rapidly charges to input value and then slowly decays
+class Rider(nn.Module):
+    def __init__(self, shape=(5, 5), beta=0.9):
+        super(Rider, self).__init__()
+        self.beta = beta
+        self.shape = shape
+        self.activation = torch.zeros(shape)
+
+    def forward(self, x):
+        assert x.shape == self.shape
+        # assert x.dtype == torch.bool
+
+        # decay
+        self.activation = self.beta * self.activation
+
+        # ride any higher input
+        self.activation = torch.max(self.activation, x)
 
 
 class Ensemble(nn.Module):
@@ -359,6 +405,8 @@ class Network(nn.Module):
     def forward(self, time_steps=100):
         history = defaultdict(list)
         smoothed_input = RunningAverage(shape=self.sensory_input_shape)
+        sensory_input_rider = RunningAverage(shape=self.sensory_input_shape, beta=0.9)
+        prediction_rider = RunningAverage(shape=self.sensory_input_shape, beta=0.9)
 
         for step in range(time_steps):
             self.ensemble1_input_collector.reset()
@@ -375,6 +423,7 @@ class Network(nn.Module):
             else:
                 x = self.sensory_input()
             history["sensory_input"].append(x)
+            sensory_input_rider(x)
             self.ensemble1_input_collector(x)
 
             # top-down prediction -> collector
@@ -396,11 +445,27 @@ class Network(nn.Module):
             x = self.collector_to_ensemble_connection(x)
             x = self.ensemble1(x)
 
+            if step == 700:
+                a = 10
+
+            prediction_rider(self.top_down_connection(self.ensemble1.spikes.float()))
+            prediction_error = (
+                sensory_input_rider.activation - prediction_rider.activation
+            ).abs()  # * prediction_rider.activation
+
             history["ensemble1_spikes"].append(x.clone())
             history["ensemble1_activation"].append(self.ensemble1.activation.clone())
             history["ensemble1_threshold"].append(self.ensemble1.threshold.clone())
             history["ensemble1_frequency"].append(
                 self.ensemble1.frequency.activation.clone()
+            )
+            history["sensory_input_rider"].append(
+                sensory_input_rider.activation.clone()
+            )
+            history["prediction_rider"].append(prediction_rider.activation.clone())
+            history["ensemble1_prediction_error"].append(prediction_error)
+            history["ensemble1_prediction_error_average"].append(
+                prediction_error.mean()
             )
 
         for k in history:
@@ -411,37 +476,54 @@ class Network(nn.Module):
         plot_spikes(history["ensemble1_spikes"], title="Ensemble 1 spikes")
         plot_voltage(history["ensemble1_threshold"], title="Ensemble 1 threshold")
         plot_voltage(history["ensemble1_frequency"], title="Ensemble 1 frequency")
+        plot_voltage(
+            history["ensemble1_prediction_error_average"],
+            title="Ensemble 1 average prediction error",
+        )
 
-        fig, ax = plt.subplots()
+        with open("images/video.html", "w") as f:
+            animation_configs = [
+                AnimatorConfig(
+                    "Sensory input rider",
+                    history["sensory_input_rider"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                AnimatorConfig(
+                    "Prediction rider",
+                    history["prediction_rider"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                AnimatorConfig(
+                    "Prediction error",
+                    history["ensemble1_prediction_error"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+            ]
+            anim = animator(
+                animation_configs,
+                interval=100,
+                nrows=len(animation_configs),
+                ncols=1,
+            )
 
-        with open("images/ensemble1_input.html", "w") as f:
-            anim = animator(
-                history["ensemble1_prediction"].view(
-                    -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                ),
-                fig,
-                ax,
-            )
-            f.write("<h2>Prediction</h2>")
-            f.write(anim.to_html5_video())
-            anim = animator(
-                history["ensemble1_smoothed_input"].view(
-                    -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                ),
-                fig,
-                ax,
-            )
-            f.write("<h2>Input (smoothed)</h2>")
-            f.write(anim.to_html5_video())
-        anim.save("images/ensemble1_input.gif")
+            f.write(anim.to_jshtml())
         print("Done")
 
 
 # %%
 net = Network(
     prediction_mixed_input=True,
-    prediction_precision_gain=0.4,
+    prediction_precision_gain=0.25,
     lateral_connections=True,
 )
-net(1000)
+net(2000)
 # %%
