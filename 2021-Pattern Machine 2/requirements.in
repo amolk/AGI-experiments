@@ -1,0 +1,12 @@
+colorama >= 0.4.0
+exitstatus
+torch
+matplotlib
+numpy
+scipy
+sklearn
+tqdm
+scikit-image
+opencv-python
+pims
+line_profiler

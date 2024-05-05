@@ -1,0 +1,5 @@
+{
+    "python.pythonPath": "/Users/amolk/.pyenv/versions/3.8.7/envs/pattern-machine/bin/python",
+    "jupyter.jupyterServerType": "local",
+    "python.formatting.provider": "black"
+}

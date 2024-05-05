@@ -1,0 +1,26 @@
+---- t0
+output__t0
+
+---- t1
+activation__t1 [0.3-1.0]
+bar = reconstruct from (patterns.begin)+(activation)
+activation_bar__t1 = bar.component[__output__]
+activation_bar__t1 has range [0.0-1.0], and has higher contrast
+
+
+
+BETTER
+---- t0
+output__t0
+
+---- t1
+activation__t1 [0.3-1.0]
+
+bar = sum from (patterns.end-0.3) with weights (output__t0)
+neighborhood_induced_activation_mask__t1 = bar.component[__output__]
+neighborhood_induced_activation_mask__t1 has range[-inf,inf]
+neighborhood_induced_activation_mask__t1 *= apical_dendrite_strength  # activation from neighbors counts less than bottom-up activation
+
+neighborhood_modulated_activation__t1 = activation__t1 * neighborhood_induced_activation_mask
+
+(output__t1) = (output__t0).trace(neighborhood_modulated_activation__t1)

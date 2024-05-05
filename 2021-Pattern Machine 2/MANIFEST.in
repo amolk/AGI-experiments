@@ -1,0 +1,5 @@
+include README.rst
+include LICENSE.txt
+include requirements.txt
+include src/patternmachine/py.typed
+recursive-exclude tests *
