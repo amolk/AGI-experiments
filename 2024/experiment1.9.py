@@ -94,10 +94,12 @@ def animator(
     :rtype: FuncAnimation
 
     """
-    assert len(configs) == nrows * ncols
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 10))
+    assert len(configs) <= nrows * ncols
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(5, 5))
     if len(configs) == 1:
         axs = [axs]
+    else:
+        axs = fig.get_axes()
 
     # datas = [c.data.cpu() for c in configs]
     # vmins = [c.vmin for c in configs]
@@ -205,7 +207,7 @@ class Ensemble(nn.Module):
         shape=(5, 5),
         beta=0.9,
         base_threshold=1.0,
-        target_frequency=0.2,
+        target_frequency=0.1,
         reset_mechanism="zero",
         auto_gain_control=True,
         lateral_connections=True,
@@ -261,7 +263,7 @@ class Ensemble(nn.Module):
 
 
 class SensoryInput(nn.Module):
-    def __init__(self, shape=(5, 5), pattern="square", noise=0.05):
+    def __init__(self, shape=(5, 5), pattern="square", noise=0.01):
         super(SensoryInput, self).__init__()
         self.shape = shape
         self.num_steps = 100
@@ -390,28 +392,27 @@ class Network(nn.Module):
         #     / self.collector_to_ensemble_connection.weights[:, 1].abs().sum()
         # )
 
-        if self.prediction_mixed_input:
-            self.top_down_connection = Connection(
-                from_shape=self.ensemble1.shape,
-                to_shape=self.ensemble1_input_collector.shape,
-            )
+        self.top_down_connection = Connection(
+            from_shape=self.ensemble1.shape,
+            to_shape=self.ensemble1_input_collector.shape,
+        )
 
-            # set first neuron's prediction to be same as its preferred input pattern
-            self.top_down_connection.weights[0, :] = self.sensory_input.signal.view(-1)
+        # set first neuron's prediction to be same as its preferred input pattern
+        self.top_down_connection.weights[0, :] = self.sensory_input.signal.view(-1)
 
-            # set second neuron's prediction to be same as its preferred input pattern
-            self.top_down_connection.weights[1, :] = self.sensory_input3.signal.view(-1)
+        # set second neuron's prediction to be same as its preferred input pattern
+        self.top_down_connection.weights[1, :] = self.sensory_input3.signal.view(-1)
 
     def forward(self, time_steps=100):
         history = defaultdict(list)
         smoothed_input = RunningAverage(shape=self.sensory_input_shape)
-        sensory_input_rider = RunningAverage(shape=self.sensory_input_shape, beta=0.9)
-        prediction_rider = RunningAverage(shape=self.sensory_input_shape, beta=0.9)
+        sensory_input_rider = Rider(shape=self.sensory_input_shape, beta=0.9)
+        prediction_rider = Rider(shape=self.sensory_input_shape, beta=0.9)
 
         for step in range(time_steps):
             self.ensemble1_input_collector.reset()
 
-            # sensory input -> collector
+            # sensory input
             if step > time_steps * 4 // 5:
                 x = self.sensory_input_mix() * 0.3  # uncertain mix
             elif step > time_steps * 3 // 5:
@@ -424,19 +425,41 @@ class Network(nn.Module):
                 x = self.sensory_input()
             history["sensory_input"].append(x)
             sensory_input_rider(x)
-            self.ensemble1_input_collector(x)
+            history["sensory_input_rider"].append(
+                sensory_input_rider.activation.clone()
+            )
 
-            # top-down prediction -> collector
+            # top-down prediction error
+            prediction = self.top_down_connection(self.ensemble1.spikes.float())
+            history["ensemble1_prediction"].append(prediction.clone())
+            prediction_rider(prediction)
+            history["prediction_rider"].append(prediction_rider.activation.clone())
+            prediction_error = (x - prediction_rider.activation).abs()
+            history["ensemble1_prediction_error"].append(prediction_error)
+            history["ensemble1_prediction_error_average"].append(
+                prediction_error.mean()
+            )
+
+            # sensory input gated by prediction error -> collector
+            gated_x = x * prediction_error
+            history["gated_sensory_input"].append(gated_x)
+            self.ensemble1_input_collector(gated_x)
+
             if self.prediction_mixed_input:
-                prediction = self.top_down_connection(
-                    self.ensemble1.spikes.float() * self.prediction_precision_gain
+                # top-down prediction gated by prediction error -> collector
+                # self.ensemble1_input_collector(
+                #     prediction_rider.activation * prediction_error
+                # )
+
+                # top-down prediction -> collector
+                self.ensemble1_input_collector(
+                    prediction_rider.activation * self.prediction_precision_gain
                 )
-                history["ensemble1_prediction"].append(prediction.clone())
-                self.ensemble1_input_collector(prediction)
 
             # collector -> ensemble
             x = self.ensemble1_input_collector.activation
             history["ensemble1_input"].append(x.clone())
+            history["ensemble1_input_average"].append(x.mean())
             smoothed_input(x)
             history["ensemble1_smoothed_input"].append(
                 smoothed_input.activation.clone()
@@ -448,24 +471,11 @@ class Network(nn.Module):
             if step == 700:
                 a = 10
 
-            prediction_rider(self.top_down_connection(self.ensemble1.spikes.float()))
-            prediction_error = (
-                sensory_input_rider.activation - prediction_rider.activation
-            ).abs()  # * prediction_rider.activation
-
             history["ensemble1_spikes"].append(x.clone())
             history["ensemble1_activation"].append(self.ensemble1.activation.clone())
             history["ensemble1_threshold"].append(self.ensemble1.threshold.clone())
             history["ensemble1_frequency"].append(
                 self.ensemble1.frequency.activation.clone()
-            )
-            history["sensory_input_rider"].append(
-                sensory_input_rider.activation.clone()
-            )
-            history["prediction_rider"].append(prediction_rider.activation.clone())
-            history["ensemble1_prediction_error"].append(prediction_error)
-            history["ensemble1_prediction_error_average"].append(
-                prediction_error.mean()
             )
 
         for k in history:
@@ -480,12 +490,15 @@ class Network(nn.Module):
             history["ensemble1_prediction_error_average"],
             title="Ensemble 1 average prediction error",
         )
+        plot_voltage(
+            history["ensemble1_input_average"], title="Ensemble 1 input average"
+        )
 
         with open("images/video.html", "w") as f:
             animation_configs = [
                 AnimatorConfig(
-                    "Sensory input rider",
-                    history["sensory_input_rider"].view(
+                    "Sensory input",
+                    history["sensory_input"].view(
                         -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
                     ),
                     0.0,
@@ -500,8 +513,32 @@ class Network(nn.Module):
                     1.0,
                 ),
                 AnimatorConfig(
+                    "Prediction",
+                    history["ensemble1_prediction"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                AnimatorConfig(
                     "Prediction error",
                     history["ensemble1_prediction_error"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                AnimatorConfig(
+                    "Gated sensory input",
+                    history["gated_sensory_input"].view(
+                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                AnimatorConfig(
+                    "Ensemble input",
+                    history["ensemble1_input"].view(
                         -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
                     ),
                     0.0,
@@ -511,8 +548,8 @@ class Network(nn.Module):
             anim = animator(
                 animation_configs,
                 interval=100,
-                nrows=len(animation_configs),
-                ncols=1,
+                nrows=3,
+                ncols=2,
             )
 
             f.write(anim.to_jshtml())
@@ -525,5 +562,5 @@ net = Network(
     prediction_precision_gain=0.25,
     lateral_connections=True,
 )
-net(2000)
+net(1000)
 # %%

@@ -148,5 +148,47 @@ Here is the [full video](<images/1.8.video.html>).
 
 A few open threads -
 
-* How to property mix prediction error with sensory input and prediction to become ensemble input?
-* Interpret baseline frequency as no evidence, higher frequency as evidence and lower frequency as negative evidence? How does this relate to inhibitary neurons/connections?
+[*] How to properly mix prediction error with sensory input and prediction to become ensemble input?
+[ ] TODO: Interpret baseline frequency as no evidence, higher frequency as evidence and lower frequency as negative evidence? How does this relate to inhibitary neurons/connections?
+
+## experiment.1.9.py
+
+* How to properly mix prediction error with sensory input and prediction to become ensemble input?
+
+We compute prediction error as the difference between the instantaneous sensory input and the prediction rider. Prediction rider approximates rate encoding corresponding to the prediction intensity.
+
+```
+  prediction_error = (x - prediction_rider.activation).abs()
+```
+
+Then we compute sensory input gated by prediction error. This highlights parts of the input that are surprising. This will be sent as input to the ensemble, along with scaled prediction which represents the "hallucination" induced by the top down prediction.
+
+```
+  gated_x = x * prediction_error
+  scaled_prediction = prediction_rider.activation * self.prediction_precision_gain
+  ensemble_input = gated_x + scaled_prediction
+```
+
+![Ensemble input components](<images/1.9.ensemble input.png>)
+
+In this example, notice that
+
+* Prediction rider remembers an earlier prediction with decay
+* Prediction error keeps one pixel that is not part of the prediction at all. That pixel is the most surprising.
+* Gated sensory input highlights the surprising pixel, but keeps other somewhat surprising pixels as well.
+* Finally, ensemble input has a mix of surprising pixel, sensory input and prediction in decreasing importance.
+
+Do we see periodic importance for sensory input and prediction? Yes, though as a side effect of using a rider for prediction.
+
+* When top down prediction fires, prediction rider charges fully. At that point, prediction is a large component in the ensemble input because it has high intensity, despite prediction precision gain handicap.
+* Later, when prediction rider fades, the ensemble input is primarily sensory input.
+
+Unclear whether this would happen if top down activity is implemented as spike sequence. We would have to use a leaky integrator in that case to integrate over the spikes and that would take time to charge up, which may result in reverse direction of component importance - earlier when the prediction integrator isn't charged, ensemble would get mostly sensory input. Later, when it charges, it would become a larger component in ensemble input.
+
+[x] TODO: Implement top down activity as spike train
+
+Wait! Top down is already spike train. Just that in this case one top neuron is driving a whole pattern so comes in all at once. That is just transmitting the neuron's spike down. Also, for this reason, rider still makes sense, at least until there are many neurons so one particular spike need not be held thorugh time.
+
+Should we represent sensory input as an ensemble of non-laterally-connected, 1 input 1 output, neurons?
+
+Indeed, we should get rid of all integrators, e.g. riders, other than to compute activation, because they represent activity that neurons should not be able to do, e.g. comparing rider of a sensory input with rider of prediction. Those higher level functions should be mediated through spike transmission and neuron activation.
