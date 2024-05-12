@@ -1,5 +1,7 @@
 # Active synapse based learning
 
+The main idea behind the active dendrite framework is to make neurons more prone to fire with appropriate context is received. This could be a mechanism for mixing top down predictions with bottom up signal. Top down predictions would make certain set of neurons prone to firing, and the patterns that these neurons are sensitive to can drive network activity. This is equivalent to attending to certain parts of the overall signal that were top down predicted. This is a likely mechanism behind active noise supression when we try to hear someone speak in a noisy environment.
+
 This project explores an active dendrite based model for learning sparse representations of input patterns. The model is inspired by the ideas proposed in {Hawkins2016} and aims to demonstrate how specific dendrites on specific neurons in specific cortical columns become strongly connected to represent particular input patterns.
 
 The model consists of a set of columns, each with a number of neurons, and each neuron having a set of dendrites with potential synapses. Binary input vectors with a sparsity of around 20% are used to train the model. Over repeated presentations of the inputs, the synaptic weights are strengthened for those dendrites and synapses that contribute to recognizing a particular input pattern.
