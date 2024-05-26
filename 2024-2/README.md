@@ -46,3 +46,5 @@ Results:
 - Border neurons start firing at a high rate and over time get AGCed to target frequency
 - Non-border neurons do not fire initially. AGC gradually reduces their threshold so they start firing
 - Eventually AGC results in almost the same firing rate for all neurons ![Average Frequency](output/01.01/average_frequency.png)
+
+This is expected behavior. Video animation showing various network activity is [here](output/01.01/video.html).
