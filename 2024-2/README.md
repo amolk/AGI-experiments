@@ -29,6 +29,11 @@ Now, there are two possibilities how prediction affects threshold of L1 neurons.
 2. Increase threshold - This would effectively subtract prediction from signal and thus would pass to L2 only prediction errors. This is likely to lead to oscillatory dynamics that we are looking for.
 
 #### Experiment 01.01
+
+    L1 -------------
+          ^ 1:1
+    S  -------------
+
 First, let's create L1 with 5x5 grid of neurons, each receiving a single floating point input from a 5x5 signal S.
 
 S represents firing frequency of the retinal ganglion cells. These cells have a baseline firing rate of 5-20hz, with a max firing rate of 300-500hz. Taking 20hz and 400hz as representative values, mapping 400hz to 1.0, we get baseline input of 20/400=0.05. So we use 1.0 and 0.05 as values for the ON and OFF pixels respectively.
@@ -48,3 +53,19 @@ Results:
 - Eventually AGC results in almost the same firing rate for all neurons ![Average Frequency](output/01.01/average_frequency.png)
 
 This is expected behavior. Video animation showing various network activity is [here](output/01.01/video.html).
+
+#### Experiment 01.02
+
+Now we will add L2 and forward connections from L1.
+
+    L2     -----
+           ^ FC
+    L1 -------------
+          ^ 1:1
+    S  -------------
+
+L2 will have just 2 neurons. One of them sensitive to the pattern that we have using for S. The other neuron will be sensitive to a different pattern.
+
+We will show that the first neuron starts with a high frequency and settle down, while the other neuron start with low firing frequency and later starts firing more. Expect the first neuron to keep firing at a slightly higher rate even in steady state.
+
+The connection from L1 to L2 - We will represent these connection weights as floating point numbers between -1 and 1. This will allow us to model expected ON pixels as positive weight, expected OFF pixels as negative weight and irrelevant pixels as values close to 0.
