@@ -27,12 +27,87 @@ def plot_voltage(mem_data, title="Membrane potential"):
     plt.show()
 
 
+def create_video(
+    history, experiment_name, layer_name, shape, interval=50, nrows=2, ncols=2
+):
+    with open(f"output/{experiment_name}/{layer_name}_video.html", "w") as f:
+        animation_configs = [
+            AnimatorConfig(
+                f"{layer_name} spikes",
+                history[f"{layer_name}_spikes"].view(-1, shape[0], shape[1]),
+                0.0,
+                1.0,
+            ),
+            AnimatorConfig(
+                f"{layer_name} activation",
+                history[f"{layer_name}_activation"].view(-1, shape[0], shape[1]),
+                0.0,
+                1.0,
+            ),
+            AnimatorConfig(
+                f"{layer_name} threshold",
+                history[f"{layer_name}_threshold"].view(-1, shape[0], shape[1]),
+                0.0,
+                1.0,
+            ),
+            AnimatorConfig(
+                f"{layer_name} frequency",
+                history[f"{layer_name}_frequency"].view(-1, shape[0], shape[1]),
+                0.0,
+                1.0,
+            ),
+        ]
+        anim = animator(
+            animation_configs,
+            interval=interval,
+            nrows=nrows,
+            ncols=ncols,
+        )
+
+        f.write(anim.to_jshtml())
+
+
+def plot_average_frequency(history, experiment_name, layer_name):
+    time_steps = history[f"{layer_name}_frequency"].shape[0]
+    average_frequency = history[f"{layer_name}_frequency"].mean(dim=1)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(time_steps), average_frequency)
+    plt.xlabel("Time Step")
+    plt.ylabel(f"{layer_name.capitalize()} Average Frequency")
+    plt.title(f"{layer_name.capitalize()}: Average Neuron Firing Frequency Over Time")
+    plt.savefig(f"output/{experiment_name}/{layer_name}_average_frequency.png")
+    plt.show()
+
+
+def plot_neuron_frequency(history, experiment_name, layer_name):
+    time_steps = history[f"{layer_name}_frequency"].shape[0]
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(time_steps), history[f"{layer_name}_frequency"])
+    plt.xlabel("Time Step")
+    plt.ylabel(f"{layer_name.capitalize()} Neuron Firing Frequency")
+    plt.title(f"{layer_name.capitalize()}: Neuron Firing Frequency Over Time")
+    plt.savefig(f"output/{experiment_name}/{layer_name}_neuron_frequency.png")
+    plt.show()
+
+
 def create_folder_if_not_exists(folder_path):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
         print(f"Folder '{folder_path}' created.")
     else:
         print(f"Folder '{folder_path}' already exists.")
+
+
+def unsigned_to_signed(x):
+    # x is in the range [0, m]
+    # first, convert to range [0, 1]
+    # then, convert to range [-0.3, 1]
+    return 1.3 * (x / x.sum()) - 0.3
+
+
+def normalize(x):
+    return x / x.sum()
 
 
 AnimatorConfig = namedtuple("AnimatorConfig", ["title", "data", "vmin", "vmax"])
@@ -345,6 +420,9 @@ class Network(nn.Module):
         self.sensory_input = SensoryInput(
             shape=self.sensory_input_shape, pattern="border"
         )
+        self.sensory_input2 = SensoryInput(
+            shape=self.sensory_input_shape, pattern="square"
+        )
 
         self.l1 = Ensemble(
             shape=self.sensory_input_shape,
@@ -352,11 +430,43 @@ class Network(nn.Module):
             base_threshold=1.0,
         )
 
+        self.l2_shape = (1, 2)
+        self.l2 = Ensemble(
+            shape=self.l2_shape,
+            lateral_connections=False,
+            base_threshold=0.1,
+        )
+
+        # connect l1 to l2
+        self.l1_l2_connection = Connection(
+            from_shape=self.l1.shape,
+            to_shape=self.l2.shape,
+        )
+
+        # set first neuron to be sensitive to the sensory input
+        self.l1_l2_connection.weights[:, 0] = normalize(
+            self.sensory_input.signal.view(-1)
+        )
+
+        # set second neuron to be sensitive to the second sensory input
+        self.l1_l2_connection.weights[:, 1] = normalize(
+            self.sensory_input2.signal.view(-1)
+        )
+
     def forward(self, time_steps=100):
         history = defaultdict(list)
 
         for step in range(time_steps):
-            x = self.sensory_input()
+            fraction = step / time_steps
+            if fraction > 0.75:
+                x = self.sensory_input()
+            elif fraction > 0.5:
+                x = self.sensory_input2()
+            elif fraction > 0.25:
+                x = self.sensory_input()
+            else:
+                x = self.sensory_input2()
+
             history["sensory_input"].append(x)
 
             x = self.l1(x)
@@ -366,78 +476,44 @@ class Network(nn.Module):
             history["l1_threshold"].append(self.l1.threshold.clone())
             history["l1_frequency"].append(self.l1.frequency.activation.clone())
 
+            x = self.l1_l2_connection(x)
+            x = self.l2(x)
+            history["l2_spikes"].append(x.clone())
+            history["l2_activation"].append(self.l2.activation.clone())
+            history["l2_threshold"].append(self.l2.threshold.clone())
+            history["l2_frequency"].append(self.l2.frequency.activation.clone())
+
         for k in history:
             history[k] = torch.stack(history[k], dim=0).view(len(history[k]), -1)
 
-        # Assuming `history` is the dictionary containing recorded history
-        time_steps = history["l1_frequency"].shape[0]
-        average_frequency = history["l1_frequency"].mean(dim=1)
+        plot_average_frequency(history, self.experiment_name, "l1")
+        # plot_average_frequency(history, self.experiment_name, "l2")
 
-        plt.figure(figsize=(10, 5))
-        plt.plot(range(time_steps), average_frequency)
-        plt.xlabel("Time Step")
-        plt.ylabel("Average Frequency")
-        plt.title("Average Neuron Firing Frequency Over Time")
-        plt.savefig(f"output/{self.experiment_name}/average_frequency.png")
-        plt.show()
+        # plot frequency of each neuron
+        # plot_neuron_frequency(history, self.experiment_name, "l1")
+        plot_neuron_frequency(history, self.experiment_name, "l2")
 
-        with open(f"output/{self.experiment_name}/video.html", "w") as f:
-            animation_configs = [
-                AnimatorConfig(
-                    "Sensory input",
-                    history["sensory_input"].view(
-                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                    ),
-                    0.0,
-                    1.0,
-                ),
-                AnimatorConfig(
-                    "L1 spikes",
-                    history["l1_spikes"].view(
-                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                    ),
-                    0.0,
-                    1.0,
-                ),
-                AnimatorConfig(
-                    "L1 activation",
-                    history["l1_activation"].view(
-                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                    ),
-                    0.0,
-                    1.0,
-                ),
-                AnimatorConfig(
-                    "L1 threshold",
-                    history["l1_threshold"].view(
-                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                    ),
-                    0.0,
-                    1.0,
-                ),
-                AnimatorConfig(
-                    "L1 frequency",
-                    history["l1_frequency"].view(
-                        -1, self.sensory_input_shape[0], self.sensory_input_shape[1]
-                    ),
-                    0.0,
-                    1.0,
-                ),
-            ]
-            anim = animator(
-                animation_configs,
-                interval=100,
-                nrows=3,
-                ncols=2,
-            )
+        # Video for L1
+        create_video(
+            history,
+            self.experiment_name,
+            "l1",
+            self.sensory_input_shape,
+            nrows=2,
+            ncols=2,
+        )
 
-            f.write(anim.to_jshtml())
+        # Video for L2
+        create_video(
+            history, self.experiment_name, "l2", self.l2_shape, nrows=2, ncols=2
+        )
+
         print("Done")
 
 
 # %%
-experiment_name = "01.01"
+experiment_name = "01.02"
 net = Network(experiment_name)
-net(200)
+net(500)
 
 # %%

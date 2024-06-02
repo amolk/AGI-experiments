@@ -58,7 +58,7 @@ This is expected behavior. Video animation showing various network activity is [
 
 Now we will add L2 and forward connections from L1.
 
-    L2     -----
+    L2      --       (2 neurons)
            ^ FC
     L1 -------------
           ^ 1:1
@@ -66,6 +66,13 @@ Now we will add L2 and forward connections from L1.
 
 L2 will have just 2 neurons. One of them sensitive to the pattern that we have using for S. The other neuron will be sensitive to a different pattern.
 
-We will show that the first neuron starts with a high frequency and settle down, while the other neuron start with low firing frequency and later starts firing more. Expect the first neuron to keep firing at a slightly higher rate even in steady state.
-
 The connection from L1 to L2 - We will represent these connection weights as floating point numbers between -1 and 1. This will allow us to model expected ON pixels as positive weight, expected OFF pixels as negative weight and irrelevant pixels as values close to 0.
+
+We present pattern1, pattern2, pattern1 and pattern2 for each 25% of total time steps. Expect corresponding neuron in L2 to activate.
+
+Here is a chart showing firing frequency of the 2 L2 neurons.
+![L2 Neuron Frequency](output/01.02/l2_neuron_frequency.png)
+
+Notice alternating activation of the neurons. They settle back to background activity despite the pattern continues to be presented.
+
+This is temporal edge detection.
