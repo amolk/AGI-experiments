@@ -3,7 +3,7 @@ In Self organizing maps (SOM) architectures, smooth feature maps are formed by u
 
 My hypothesis is that this similarity in the maps formed by SOM models and brains is merely coincidental. In the brain, maps are not formed based on pattern similarity, but based on how closely the patterns appear in time. Neighboring neurons become sensitive to consequtive patterns, not pixel similar patterns. It just so happens that in nature, signals change gradually. For example, slowing tilting head makes any visible lines slowly rotate. The maps are formed based on neighbors becoming sensitive consequtive patterns, and so in this case, they become sensitive to similar line angles.
 
-Now, couple the above hypothesis with the observation that in the contex, activation seems to progress in traveling waves and one reaches the deduction that activating neighboring neurons sequentially would trace a input trajectory, for example, represent a line rotating in clockwise or counterclockwise direction.
+Now, couple the above hypothesis with the observation that in the contex, activation seems to progress in traveling waves and one reaches the deduction that activating neighboring neurons sequentially would trace a input trajectory, for example, represent a line rotating in clockwise or counterclockwise direction. Recently a similar hypothesis has been [investigated](https://www.nature.com/articles/s41467-023-39076-2).
 
 This is one of the core foundation of Pattern Machine - SOM neighborhood should represent input transition function. The idea is that this is happening at each area in the cortical area functional hierarchy. This means that the common cortical algorithm encodes transition function over cortical surface.
 
@@ -58,13 +58,13 @@ This is expected behavior. Video animation showing various network activity is [
 
 Now we will add L2 and forward connections from L1.
 
-    L2      --       (2 neurons)
+    L2      --       (2 neurons N1, N2)
            ^ FC
     L1 -------------
           ^ 1:1
     S  -------------
 
-L2 will have just 2 neurons. One of them sensitive to the pattern that we have using for S. The other neuron will be sensitive to a different pattern.
+L2 will have just 2 neurons, N1 and N2. One of them sensitive to the pattern P1 that we have using for S. The other neuron will be sensitive to a different pattern P2.
 
 The connection from L1 to L2 - We will represent these connection weights as floating point numbers between -1 and 1. This will allow us to model expected ON pixels as positive weight, expected OFF pixels as negative weight and irrelevant pixels as values close to 0.
 
@@ -76,3 +76,12 @@ Here is a chart showing firing frequency of the 2 L2 neurons.
 Notice alternating activation of the neurons. They settle back to background activity despite the pattern continues to be presented.
 
 This is temporal edge detection.
+
+#### Experiment 01.03
+Given the alternating patterns P1-P2-P1-P2, a learning algorithm for lateral connections between N1 and N2 would strongly connect N1 to N2 and N2 to N1, as those two neurons will fire sequentially during learning. We will implement learning later so we manually set up this connectivity in this experiment.
+
+We will explore two types of lateral connectity to make N2 fire after N1 and vic-a-versa.
+
+1. As synaptic inputs - Spikes from N1 will come to N2 as input and depolarize it. This is unlikely to work well unless the connection is orders of magnitude stronger than the afferant connections from L1 to N1 This is because the afferant has 25 neurons, while L1 to L2 will be single connection, which would otherwise be inconsequential.
+2. As threshold modulator - If N1 spiking leads to reduced threshold for N2, that would make N2 more likely to fire. This is more likely to achieve the desired effect so we will implement this scheme. Later, when L2 has more neurons, we will revisit this decision.
+
