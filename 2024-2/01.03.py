@@ -91,6 +91,17 @@ def plot_neuron_frequency(history, experiment_name, layer_name):
     plt.show()
 
 
+def plot_neuron_threshold(history, experiment_name, layer_name):
+    time_steps = history[f"{layer_name}_threshold"].shape[0]
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(time_steps), history[f"{layer_name}_threshold"])
+    plt.xlabel("Time Step")
+    plt.ylabel(f"{layer_name.capitalize()} Neuron Threshold")
+    plt.title(f"{layer_name.capitalize()}: Neuron Threshold Over Time")
+    plt.savefig(f"output/{experiment_name}/{layer_name}_neuron_threshold.png")
+    plt.show()
+
+
 def create_folder_if_not_exists(folder_path):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -291,6 +302,7 @@ class Ensemble(nn.Module):
         beta=0.9,
         base_threshold=1.0,
         target_frequency=0.1,
+        refractory_input_gain=-0.3,
         reset_mechanism="zero",
         auto_gain_control=True,
         lateral_connections=True,
@@ -300,11 +312,13 @@ class Ensemble(nn.Module):
         self.beta = beta
         self.base_threshold = base_threshold
         self.target_frequency = target_frequency
+        self.refractory_input_gain = refractory_input_gain
         self.reset_mechanism = reset_mechanism
         self.auto_gain_control = auto_gain_control
         self.lateral_connections = lateral_connections
 
         self.activation = torch.zeros(shape)
+        self.input_gain = torch.ones(shape)
         self.spikes = torch.zeros(shape, dtype=torch.bool)
         if auto_gain_control:
             self.threshold = torch.ones(shape) * self.base_threshold
@@ -318,6 +332,9 @@ class Ensemble(nn.Module):
     def forward(self, x):
         assert x.shape == self.shape
 
+        # input gain exponentially recovers to 1.0
+        self.input_gain += (1.0 - self.input_gain) * 0.2
+
         # lateral input
         if self.lateral_connections:
             lateral_input = (
@@ -327,7 +344,7 @@ class Ensemble(nn.Module):
             )
             x = x + lateral_input
 
-        self.activation = self.beta * self.activation + x
+        self.activation = self.beta * self.activation + x * self.input_gain + 0.05
         self.spikes = self.activation > self.threshold
 
         if self.auto_gain_control:
@@ -335,6 +352,7 @@ class Ensemble(nn.Module):
             self.threshold[self.frequency.activation > self.target_frequency] += 0.05
             self.threshold[self.frequency.activation < self.target_frequency] /= 1.05
 
+        self.input_gain[self.spikes] = self.refractory_input_gain
         if self.reset_mechanism == "zero":
             self.activation[self.spikes] = 0.0
         elif self.reset_mechanism == "subtract":
@@ -411,6 +429,16 @@ class Connection(nn.Module):
         return (x.float().view(-1) @ self.weights).view(self.to_shape)
 
 
+class ThresholdModulator(nn.Module):
+    def __init__(self, ensemble: Ensemble, beta=-0.1):
+        super(ThresholdModulator, self).__init__()
+        self.ensemble = ensemble
+        self.beta = beta
+
+    def forward(self, x):
+        self.ensemble.threshold += self.ensemble.threshold * self.beta * x
+
+
 class Network(nn.Module):
     def __init__(self, experiment_name):
         super(Network, self).__init__()
@@ -434,7 +462,7 @@ class Network(nn.Module):
         self.l2 = Ensemble(
             shape=self.l2_shape,
             lateral_connections=False,
-            base_threshold=0.1,
+            base_threshold=1.0,
         )
 
         # connect l1 to l2
@@ -451,6 +479,18 @@ class Network(nn.Module):
         # set second neuron to be sensitive to the second sensory input
         self.l1_l2_connection.weights[:, 1] = normalize(
             self.sensory_input2.signal.view(-1)
+        )
+
+        # l2 lateral connections
+        self.l2_lateral_connection = Connection(
+            from_shape=self.l2.shape,
+            to_shape=self.l2.shape,
+        )
+        self.l2_lateral_connection.weights = torch.tensor([[0.0, 1.0], [1.0, 0.0]])
+
+        # connect l2 neurons laterally, such that both neurons strongly excite each other
+        self.l2_lateral_threshold_modulator = ThresholdModulator(
+            ensemble=self.l2, beta=-0.3
         )
 
     def forward(self, time_steps=100):
@@ -478,6 +518,10 @@ class Network(nn.Module):
 
             x = self.l1_l2_connection(x)
             x = self.l2(x)
+
+            # l2_lateral_input = self.l2_lateral_connection(x)
+            # self.l2_lateral_threshold_modulator(l2_lateral_input)
+
             history["l2_spikes"].append(x.clone())
             history["l2_activation"].append(self.l2.activation.clone())
             history["l2_threshold"].append(self.l2.threshold.clone())
@@ -492,28 +536,29 @@ class Network(nn.Module):
         # plot frequency of each neuron
         # plot_neuron_frequency(history, self.experiment_name, "l1")
         plot_neuron_frequency(history, self.experiment_name, "l2")
+        plot_neuron_threshold(history, self.experiment_name, "l2")
 
         # Video for L1
-        create_video(
-            history,
-            self.experiment_name,
-            "l1",
-            self.sensory_input_shape,
-            nrows=2,
-            ncols=2,
-        )
+        # create_video(
+        #     history,
+        #     self.experiment_name,
+        #     "l1",
+        #     self.sensory_input_shape,
+        #     nrows=2,
+        #     ncols=2,
+        # )
 
-        # Video for L2
-        create_video(
-            history, self.experiment_name, "l2", self.l2_shape, nrows=2, ncols=2
-        )
+        # # Video for L2
+        # create_video(
+        #     history, self.experiment_name, "l2", self.l2_shape, nrows=2, ncols=2
+        # )
 
         print("Done")
 
 
 # %%
-experiment_name = "01.02"
+experiment_name = "01.03"
 net = Network(experiment_name)
-net(500)
+net(1000)
 
 # %%
