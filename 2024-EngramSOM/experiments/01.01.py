@@ -16,7 +16,7 @@ import torch
 from patternmachine.signal_source.video_source import VideoSource
 from matplotlib import pyplot as plt
 
-video_path = "/Users/amolk/Downloads/walk/eli_walk.avi"
+video_path = "../assets/eli_walk.avi"
 video_source = VideoSource(filepath=video_path, stride=1, height=200, width=200, invert=True)
 video_source.imshow(64, filename=f"output/{experiment_name}/train_images.png")
 
