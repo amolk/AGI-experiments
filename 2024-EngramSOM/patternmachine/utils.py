@@ -5,6 +5,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import wandb
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
 from .config import Config
@@ -64,7 +65,13 @@ def show_2d_image_alpha(image, alpha, title=None):
 
 
 def show_image_grid(
-    images, vmin=0, vmax=1, grid_width=None, grid_height=None, filename=None
+    images,
+    vmin=0,
+    vmax=1,
+    grid_width=None,
+    grid_height=None,
+    filename=None,
+    wandb_name=None,
 ):
     s = images.shape
 
@@ -123,6 +130,9 @@ def show_image_grid(
         )
 
     fig.subplots_adjust(top=1, left=0, bottom=0, right=1, wspace=0.1, hspace=0.1)
+
+    if wandb_name:
+        wandb.log({wandb_name: wandb.Image(plt)})
 
     if filename:
         plt.savefig(filename, bbox_inches="tight", pad_inches=0)
