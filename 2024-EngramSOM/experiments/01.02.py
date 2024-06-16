@@ -1,22 +1,30 @@
 # %%
 !pip install -q --upgrade pip
-!pip install -q opencv-python scipy datasets scikit-learn
+!pip install -q opencv-python scipy datasets scikit-learn wandb
 
 # %%
 import sys
-path = "/Users/amolk/work/AGI/AGI-experiments/2024-EngramSOM"
-if path not in sys.path:
-	sys.path.append(path)
+import pathlib
+path = pathlib.Path().absolute().parent
+PROJECT_NAME = path.name
+if str(path) not in sys.path:
+	sys.path.append(str(path))
 
 # %%
-experiment_name = "01.02"
+# Detect experiment name from the file name
+EXPERIMENT_NAME = __file__.split("/")[-1].replace(".py", "") # e.g. "01.03"
+print("Experiment:", EXPERIMENT_NAME)
+
+# Create the output directory if it does not exist
+import os
+os.makedirs(f"output/{EXPERIMENT_NAME}", exist_ok=True)
 
 # %%
 import torch
 from patternmachine.signal_source.mnist_source import MNISTSource
 
 data_source = MNISTSource(invert=False)
-data_source.imshow(64, filename=f"output/{experiment_name}/train_images.png")
+data_source.imshow(64, filename=f"output/{EXPERIMENT_NAME}/train_images.png")
 
 # %%
 from torch import nn
@@ -24,6 +32,14 @@ import numpy as np
 from patternmachine.utils import show_image_grid
 from matplotlib import pyplot as plt
 from tqdm import trange
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import wandb
+
+
+class DebugSettings:
+	def __init__(self):
+		self.debug_metrics = True
+		self.debug_interval = 10000
 
 class SOM(nn.Module):
 	def __init__(self, m, n, dim, alpha=0.5, sigma=None, refractory_period=None):
@@ -35,6 +51,7 @@ class SOM(nn.Module):
 		self.sigma_initial = sigma if sigma else 0.75
 		self.sigma = self.sigma_initial
 		self.refractory_period = refractory_period
+		self.debug_settings = DebugSettings()
 
 		self.weights = nn.Parameter(torch.rand(m * n, dim))
 
@@ -53,15 +70,15 @@ class SOM(nn.Module):
 		return dists
 
 	def update_learning_parameters(self, iteration, n_iter):
-		self.alpha = self.alpha * np.exp(-iteration / n_iter)
-		# self.sigma = self.sigma_initial * np.exp(-iteration / (n_iter / np.log(self.sigma_initial)))
+		# self.alpha = self.alpha * np.exp(-iteration / n_iter)
+		self.sigma = self.sigma * 0.9
+		wandb.log({"alpha": self.alpha, "sigma": self.sigma})
 
 	def train_som(self, data_source, n_iter=100):
-		errors = []
-		errors.append([0, self.evaluate_som(data_source)])
+		metrics = {}
+		self.log_metrics(metrics, data_source, 0, 0)
 		for it in range(n_iter):
 			print("Epoch", it)
-			self.update_learning_parameters(it, n_iter)
 			# data_source.seek(0)
 			images = data_source.item()
 			for i in trange(data_source.item_count):
@@ -88,30 +105,37 @@ class SOM(nn.Module):
 				# Update weights vectorized
 				self.weights.data += self.alpha * influence * (x - self.weights)
 
+				if i%self.debug_settings.debug_interval == 0:
+					self.log_metrics(metrics, data_source, it, i)
+
 				if i%10000 == 0:
-					errors.append([it*data_source.item_count+i, self.evaluate_som(data_source)])
-					plt.scatter(*zip(*errors))
-					plt.show()
-					show_image_grid(self.weights.detach().view(-1, data_source.height, data_source.width))
-					plt.show()
-
 					# update sigma to reduce the neighborhood
-					self.sigma = self.sigma * 0.8
+					self.update_learning_parameters(it, n_iter)
 
-		errors.append([it*data_source.item_count+i, self.evaluate_som(data_source)])
-		return errors
+		self.log_metrics(metrics, data_source, it, i)
+		return metrics
+
+	def log_metrics(self, all_metrics, data_source, epoch, example_index):
+		time_step = self.get_time_step(data_source, epoch, example_index)
+		metrics = self.evaluate_som(data_source)
+		all_metrics[time_step] = metrics
+		wandb.log({"time_step": time_step, **metrics})
+		show_image_grid(self.weights.detach().view(-1, data_source.height, data_source.width), filename=f"output/{EXPERIMENT_NAME}/som_weights.png", wandb_name="som_weights")
+
+	def get_time_step(self, data_source, epoch, example_index):
+		return epoch * data_source.item_count + example_index
 
 	def evaluate_som(self, data_source):
-		errors = []
+		losses = []
 		for i in range(data_source.test_images.shape[0]):
 			x = torch.tensor(data_source.test_images[i], dtype=torch.float32).view(-1)
 			x = x.unsqueeze(0)
 			dists = self.forward(x)
 			bmu_index = torch.argmin(dists).item()
 			bmu = self.weights[bmu_index]
-			error = torch.norm(x - bmu)
-			errors.append(error.item())
-		error = np.mean(errors)
+			loss = torch.norm(x - bmu)
+			losses.append(loss.item())
+		loss = np.mean(losses)
 
 		train_image_data = torch.tensor(data_source.train_images, dtype=torch.float32).view(-1, data_source.height*data_source.width)
 		dists = torch.cdist(train_image_data, self.weights)
@@ -124,41 +148,34 @@ class SOM(nn.Module):
 		predicted_labels = neuron_labels[bmu_indices]
 
 		# get accuracy, precision, recall, f1-score by comparing actual labels with predicted labels
-		from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 		accuracy = accuracy_score(data_source.test_labels, predicted_labels)
 		precision = precision_score(data_source.test_labels, predicted_labels, average='weighted')
 		recall = recall_score(data_source.test_labels, predicted_labels, average='weighted')
 		f1 = f1_score(data_source.test_labels, predicted_labels, average='weighted')
-		print("Accuracy:", accuracy)
-		print("Precision:", precision)
-		print("Recall:", recall)
-		print("F1 Score:", f1)
 
-		return error
-
-def create_image_grid(images, gw, gh, iw, ih):
-	# Reshape the flat images array to a grid shape
-	images_grid = np.array(images).reshape(gh, gw, ih, iw, -1)
-
-	# Transpose the array to move the grid dimensions next to each other
-	grid_image = images_grid.transpose(0, 2, 1, 3, 4)
-
-	# Reshape the array to the final image shape
-	grid_image = grid_image.reshape(gh * ih, gw * iw, -1)
-
-	return grid_image
-
-som_shape = (20, 20)
-som = SOM(som_shape[0], som_shape[1], data_source.height*data_source.width, sigma=0.9, alpha=0.1)
-errors = som.train_som(data_source, 3)
-# errors has the format [[iteration, error], ...]
-# plot the error scatter plot
-plt.scatter(*zip(*errors))
-plt.savefig(f"output/{experiment_name}/loss.png")
-plt.show()
-show_image_grid(som.weights.detach().view(-1, data_source.height, data_source.width), filename=f"output/{experiment_name}/som_weights.png")
-plt.show()
+		metrics = {"loss": loss, "accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+		return metrics
 
 # %%
-errors = som.train_som(data_source, 3)
+wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}")
+
+som_shape = (20, 20)
+alpha = 0.1
+sigma = 0.9
+epochs = 3
+som = SOM(som_shape[0], som_shape[1], data_source.height*data_source.width, sigma=sigma, alpha=alpha)
+
+wandb.config.update({
+	"som_height": som_shape[0],
+	"som_width": som_shape[1],
+	"pattern_height": data_source.height,
+	"pattern_width": data_source.width,
+	"alpha": alpha,
+	"sigma": sigma,
+	"epochs": epochs
+})
+
+metrics = som.train_som(data_source, epochs)
+
+wandb.finish()
 # %%
