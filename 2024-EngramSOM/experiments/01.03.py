@@ -42,28 +42,30 @@ class DebugSettings:
 		self.debug_interval = 10000
 
 class SOM(nn.Module):
-	def __init__(self, m, n, dim, alpha=0.5, sigma=None, refractory_period=None):
+	def __init__(self, som_height, som_width, pattern_height, pattern_width, alpha=0.5, sigma=None, refractory_period=None):
 		super(SOM, self).__init__()
-		self.m = m
-		self.n = n
-		self.dim = dim
+		self.som_height = som_height
+		self.som_width = som_width
+		self.pattern_height = pattern_height
+		self.pattern_width = pattern_width
+		self.dim = pattern_height * pattern_width
 		self.alpha = alpha
 		self.sigma_initial = sigma if sigma else 0.75
 		self.sigma = self.sigma_initial
 		self.refractory_period = refractory_period
 		self.debug_settings = DebugSettings()
 
-		self.weights = nn.Parameter(torch.rand(m * n, dim))
+		self.weights = nn.Parameter(torch.rand(som_height * som_width, self.dim))
 
 		# Create a grid of neuron positions
-		self.grid = self.create_grid(m, n)
+		self.grid = self.create_grid(som_height, som_width)
 
 		# Initialize the last activation times with large negative values
 		if self.refractory_period is not None:
 			self.last_activation = -torch.ones(m * n, dtype=torch.int)
 
-	def create_grid(self, m, n):
-		return torch.tensor([[i, j] for i in range(m) for j in range(n)], dtype=torch.float32)
+	def create_grid(self, som_height, som_width):
+		return torch.tensor([[i, j] for i in range(som_height) for j in range(som_width)], dtype=torch.float32)
 
 	def forward(self, x):
 		dists = torch.cdist(x, self.weights)
@@ -163,7 +165,7 @@ som_shape = (20, 20)
 alpha = 0.1
 sigma = 0.9
 epochs = 3
-som = SOM(som_shape[0], som_shape[1], data_source.height*data_source.width, sigma=sigma, alpha=alpha)
+som = SOM(*som_shape, data_source.height, data_source.width, sigma=sigma, alpha=alpha)
 
 wandb.config.update({
 	"som_height": som_shape[0],
