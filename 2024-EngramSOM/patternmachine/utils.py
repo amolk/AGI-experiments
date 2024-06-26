@@ -87,7 +87,7 @@ def show_image_grid(
     assert len(s) == 3
     if grid_width is None or grid_height is None:
         image_grid_size = math.floor(s[0] ** 0.5)
-        if image_grid_size > 20:
+        if image_grid_size > 30:
             return
         grid_width = image_grid_size
         grid_height = image_grid_size

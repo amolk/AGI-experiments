@@ -30,3 +30,14 @@ Results:
 
 ### Experiment 01.03
 Add precision awareness. Show effect on MNIST precision, recall, types of patterns formed, etc
+
+Results 7x7 SOM:
+- Training images ![MNIST images](experiments/output/01.03/train_images.png)
+- SOM patterns ![SOM patterns](experiments/output/01.03/som_weights.png)
+- Precision map ![Precision map](experiments/output/01.03/som_precision.png)
+
+The resulting SOM patterns are more diffuse compared to without precision. The patterns also don't appear to be organized as well.
+
+This is likely because precision awareness attempts to make edge enhanced patterns, where the ON pixels are part of the pattern, along with an "edge" of OFF pixels. This results in different patterns getting generated for different thickness of the MNIST digits.
+
+7x7 may not be enough to capture both shape and thickness of the digits. I will return this experiment with a larger SOM as experiment 01.04.

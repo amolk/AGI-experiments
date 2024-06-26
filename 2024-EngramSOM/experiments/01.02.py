@@ -157,7 +157,7 @@ class SOM(nn.Module):
 		return metrics
 
 # %%
-wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}")
+wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}", mode="disabled")
 
 som_shape = (20, 20)
 alpha = 0.1

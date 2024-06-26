@@ -18,7 +18,7 @@ get_ipython().run_line_magic("matplotlib", "inline")
 from patternmachine.similarity_utils import (
     _overlap_similarity,
     overlap_similarity_exp_memoized,
-    overlap_similarity_lin_memoized,
+    d,
     overlap_similarity_lin_interpolate,
     similarity,
 )
@@ -67,7 +67,7 @@ for test_case in test_cases:
 
     methods = [
         # overlap_similarity_exp_memoized,
-        overlap_similarity_lin_memoized,
+        d,
         # overlap_similarity_lin_interpolate,
         similarity,
     ]
