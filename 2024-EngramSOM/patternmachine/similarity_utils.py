@@ -334,4 +334,43 @@ def overlap_similarity_lin_interpolate(
     )
 
 
-overlap_similarity = overlap_similarity_lin_memoized
+overlap_similarity = overlap_similarity_exp_memoized
+
+precision_weighted_diff_sim_memo_values = None
+
+
+def precision_weighted_diff_sim(x, x_precision, y, y_precision):
+    global precision_weighted_diff_sim_memo_points, precision_weighted_diff_sim_memo_values
+    if precision_weighted_diff_sim_memo_values is None:
+        precision_weighted_diff_sim_memo_values = load_memo(
+            "precision_weighted_diff_sim_memo_values", N, M
+        )
+
+    if precision_weighted_diff_sim_memo_values is None:
+        precision_weighted_diff_sim_memo_points = (
+            torch.linspace(0.0, 1.0, steps=N),
+            torch.linspace(MIN_PRECISION, MAX_PRECISION, steps=M),
+            torch.linspace(0.0, 1.0, steps=N),
+            torch.linspace(MIN_PRECISION, MAX_PRECISION, steps=M),
+        )
+        x1, p1, x2, p2 = torch.meshgrid(*precision_weighted_diff_sim_memo_points)
+
+        sim = 1 - (x1 - x2).abs()
+        sim /= (p1 * p2 + 0.4).pow(0.3)
+        sim.clamp_(min=0, max=1)
+
+        precision_weighted_diff_sim_memo_values = sim
+
+        save_memo(
+            "precision_weighted_diff_sim_memo_values",
+            N,
+            M,
+            precision_weighted_diff_sim_memo_values,
+        )
+
+    i1 = (x * (N - 1)).long()
+    i2 = (x_precision * (M - 1)).long()
+    i3 = (y * (N - 1)).long()
+    i4 = (y_precision * (M - 1)).long()
+
+    return precision_weighted_diff_sim_memo_values[i1, i2, i3, i4]

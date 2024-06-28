@@ -34,7 +34,6 @@ from matplotlib import pyplot as plt
 from tqdm import trange
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import wandb
-from patternmachine.similarity_utils import overlap_similarity
 
 
 class DebugSettings:
@@ -58,7 +57,7 @@ class SOM(nn.Module):
 		self.debug_settings = DebugSettings()
 
 		self.weights = nn.Parameter(torch.rand(som_height * som_width, self.dim))
-		self.precision = nn.Parameter(torch.rand(som_height * som_width, self.dim))
+		self.precision = nn.Parameter(torch.rand(som_height * som_width, self.dim)) * 0.01
 
 		# Create a grid of neuron positions
 		self.grid = self.create_grid(som_height, som_width)
@@ -70,11 +69,13 @@ class SOM(nn.Module):
 	def create_grid(self, som_height, som_width):
 		return torch.tensor([[i, j] for i in range(som_height) for j in range(som_width)], dtype=torch.float32)
 
-	def forward(self, x):
+	def forward(self, x, use_precision=True):
 		# dists = torch.cdist(x, self.weights)
 		# return dists
-		sim = self.similarity(x, torch.ones_like(x), self.weights, self.precision)
-		sim = sim.mean(-1)
+		if use_precision:
+			sim = self.precision_aware_similarity(x, torch.ones_like(x), self.weights.detach(), self.precision.detach())
+		else:
+			sim = self.similarity(x, self.weights)
 		return 1.0-sim
 
 	def update_learning_parameters(self, iteration, n_iter):
@@ -82,9 +83,9 @@ class SOM(nn.Module):
 		self.sigma = self.sigma * 0.9
 		wandb.log({"alpha": self.alpha, "sigma": self.sigma})
 
-	def train_som(self, data_source, n_iter=100):
+	def train_som(self, data_source, n_iter=100, use_precision=True):
 		metrics = {}
-		self.log_metrics(metrics, data_source, 0, 0)
+		self.log_metrics(metrics, data_source, 0, 0, use_precision=use_precision)
 		for it in range(n_iter):
 			print("Epoch", it)
 			# data_source.seek(0)
@@ -92,7 +93,7 @@ class SOM(nn.Module):
 			for i in trange(data_source.item_count):
 				x = next(images).view(-1)
 				x = x.unsqueeze(0)
-				dists = self.forward(x)
+				dists = self.forward(x, use_precision=use_precision)
 
 				# Mask out neurons that are in the refractory period
 				if self.refractory_period is not None:
@@ -112,60 +113,86 @@ class SOM(nn.Module):
 
 				# Update weights vectorized
 				self.weights.data += self.alpha * influence * (x - self.weights)
-				# precision beta decide how much to update pattern precision
-				# assuming beta = 0.9
-				# For winner
-				# 	- influence is 1, so precision_beta is same as beta 0.9
-				#		- as a result, precision for the winner will be updated (1-0.9), i.e. 10%
-				# For far away from winner
-				#		- influence is 0, so precision_beta is 0.9+(1-0)(1-0.9)=1.0
-				#		- as a result, precision for this neuron will not be updated at all
-				# For a neuron near the winner
-				#		- say influence is 0.4, then precision_beta is 0.9+(1-0.4)(1-0.9)=0.96
-				#		- as a result, precision for this neuron will be slightly updated (1-0.96), i.e 4%
-				precision_beta = self.beta + (1 - influence) * (1 - self.beta)
+				if use_precision:
+					# precision beta decide how much to update pattern precision
+					# assuming beta = 0.9
+					# For winner
+					# 	- influence is 1, so precision_beta is same as beta 0.9
+					#		- as a result, precision for the winner will be updated (1-0.9), i.e. 10%
+					# For far away from winner
+					#		- influence is 0, so precision_beta is 0.9+(1-0)(1-0.9)=1.0
+					#		- as a result, precision for this neuron will not be updated at all
+					# For a neuron near the winner
+					#		- say influence is 0.4, then precision_beta is 0.9+(1-0.4)(1-0.9)=0.96
+					#		- as a result, precision for this neuron will be slightly updated (1-0.96), i.e 4%
+					precision_beta = self.beta + (1 - influence) * (1 - self.beta)
 
-				# precision is inverse of the difference between the (updated) patterns and the input pixels
-				# if a pattern pixel is same as the input
-				#		- difference = 0.0
-				#		- precision = 1.0
-				# if a pattern pixel is maximally different from the input (i.e. 0 vs 1)
-				#		- precision = 1.0 - 1.0 = 0
-				self.precision.data = (self.precision.data * precision_beta) + ((1-(x - self.weights).abs()) * (1 - precision_beta)) * x
-				# self.precision[bmu_index].data = (self.precision[bmu_index].data * precision_beta) + ((1-(x - self.weights[bmu_index]).abs()) * (1 - precision_beta))
+					# precision is inverse of the difference between the (updated) patterns and the input pixels
+					# if a pattern pixel is same as the input
+					#		- difference = 0.0
+					#		- precision = 1.0
+					# if a pattern pixel is maximally different from the input (i.e. 0 vs 1)
+					#		- precision = 1.0 - 1.0 = 0
+					self.precision.data = (self.precision.data * precision_beta) + ((1-(x - self.weights).abs()) * (1 - precision_beta))
+					# self.precision[bmu_index].data = (self.precision[bmu_index].data * precision_beta) + ((1-(x - self.weights[bmu_index]).abs()) * (1 - precision_beta))
 
 				if i%self.debug_settings.debug_interval == 0:
-					self.log_metrics(metrics, data_source, it, i)
+					self.log_metrics(metrics, data_source, it, i, use_precision=use_precision)
 
 				if i%10000 == 0:
 					# update sigma to reduce the neighborhood
 					self.update_learning_parameters(it, n_iter)
 
-		self.log_metrics(metrics, data_source, it, i)
+		self.log_metrics(metrics, data_source, it, i, use_precision=use_precision)
 		return metrics
 
-	def similarity(self, x, x_precision, y, y_precision):
-		# x = x.unsqueeze(1)
-		# x_precision = x_precision.unsqueeze(1)
+	def similarity(self, x, y):
+		# Vectorized version of the similarity function (a - b).abs().mean()
+		# x: (x_count, dim)
+		# y: (y_count, dim)
+		assert len(x.shape) == 2
+		assert len(y.shape) == 2
+		assert x.shape[1] == y.shape[1]
 
-		# y = y.unsqueeze(0)
-		# y_precision = y_precision.unsqueeze(0)
+		# a is single vector, b is single vector
+		sim = lambda a, b: (a - b).abs().mean()
 
-		# min_precision = 
+		# double vectorization over x_count and y_count
+		vector_sim = torch.func.vmap(torch.func.vmap(sim, (None, 0)), (0, None))
+		return 1.0 - vector_sim(x, y)
 
-		# sim = 1.0 / (1.0 + (x-y).abs())
-		# sim = (1 - y_precision) * 0.2 + (sim * (y_precision + 1.0) * 0.5).pow(2)
-		# sim = sim.clamp(min=0, max=1)
-		# sim = sim.mean(dim=-1)
-		# return sim
-		sim = overlap_similarity(x, x_precision, y, y_precision) * x * x_precision
-		# show_image_grid(sim.view(-1, data_source.height, data_source.width), vmax=None, vmin=None)
 
+	def precision_aware_similarity(self, x, x_precision, y, y_precision):
+		# x: (x_count, dim)
+		# y: (y_count, dim)
+		assert len(x.shape) == 2
+		assert len(x_precision.shape) == 2
+		assert x.shape[0] == x_precision.shape[0]
+		assert x.shape[1] == x_precision.shape[1]
+
+		assert len(y.shape) == 2
+		assert len(y_precision.shape) == 2
+		assert y.shape[0] == y_precision.shape[0]
+		assert y.shape[1] == y_precision.shape[1]
+
+		assert x.shape[1] == y.shape[1]
+
+		# a is single vector, b is multiple vectors
+		def sim_f(a, pa, b, pb):
+			sim = 1 - (a - b).abs()
+			sim /= (pa * pb + 0.4).pow(0.3)
+			sim.clamp_(min=0, max=1)
+			return sim.mean(-1)
+
+		# similarity of multiple vectors with multiple vectors
+		vector_sim_f = torch.func.vmap(sim_f, (0, 0, None, None))
+
+		sim = vector_sim_f(x, x_precision, y, y_precision)
 		return sim
 
-	def log_metrics(self, all_metrics, data_source, epoch, example_index):
+	def log_metrics(self, all_metrics, data_source, epoch, example_index, use_precision):
 		time_step = self.get_time_step(data_source, epoch, example_index)
-		metrics = self.evaluate_som(data_source)
+		metrics = self.evaluate_som(data_source, use_precision=use_precision)
 		all_metrics[time_step] = metrics
 		wandb.log({"time_step": time_step, **metrics})
 		show_image_grid(self.weights.detach().view(-1, data_source.height, data_source.width), filename=f"output/{EXPERIMENT_NAME}/som_weights.png", wandb_name="som_weights")
@@ -174,41 +201,46 @@ class SOM(nn.Module):
 	def get_time_step(self, data_source, epoch, example_index):
 		return epoch * data_source.item_count + example_index
 
-	def evaluate_som(self, data_source):
+	def evaluate_som(self, data_source, use_precision):
 		metrics = {}
-		# losses = []
-		# for i in range(data_source.test_images.shape[0]):
-		# 	x = torch.tensor(data_source.test_images[i], dtype=torch.float32).view(-1)
-		# 	x = x.unsqueeze(0)
-		# 	dists = 1-self.forward(x)
-		# 	bmu_index = torch.argmin(dists).item()
-		# 	bmu = self.weights[bmu_index]
-		# 	loss = torch.norm(x - bmu)
-		# 	losses.append(loss.item())
-		# loss = np.mean(losses)
-		# metrics = {"loss": loss}
+		losses = []
 
-		# train_image_data = torch.tensor(data_source.train_images, dtype=torch.float32).view(-1, data_source.height*data_source.width)
-		# dists = 1-self.similarity(train_image_data, torch.ones_like(train_image_data), self.weights, self.precision)
-		# bmu_indices = torch.argmin(dists, dim=0)
-		# neuron_labels = data_source.train_labels[bmu_indices]
+		test_data_point_count = 1000 #train_image_data.shape[0]
+		test_image_data = torch.tensor(data_source.test_images[:test_data_point_count], dtype=torch.float32).view(-1, data_source.height*data_source.width)
+		test_dists = self.forward(test_image_data, use_precision=use_precision)
+		bmu_index = torch.argmin(test_dists, dim=-1)
+		loss = torch.stack([test_dists[i, bmu_index[i]] for i in range(bmu_index.shape[0])]).mean()
+		metrics = {"loss": loss}
 
-		# test_image_data = torch.tensor(data_source.test_images, dtype=torch.float32).view(-1, data_source.height*data_source.width)
-		# dists = 1-self.similarity(test_image_data, torch.ones_like(test_image_data), self.weights, self.precision)
-		# bmu_indices = torch.argmin(dists, dim=1)
-		# predicted_labels = neuron_labels[bmu_indices]
+		train_image_data = torch.tensor(data_source.train_images, dtype=torch.float32).view(-1, data_source.height*data_source.width)
+		data_point_count = 500 #train_image_data.shape[0]
+		dists = self.forward(train_image_data[:data_point_count], use_precision=use_precision)
+		bmu_indices = torch.argmin(dists, dim=-1)
+		# go through all examples - for each neuron, store the labels of the examples that are closest to it
+		# then assign the most common label to the neuron
+		# if no lables are assigned to a neuron, assign a random label
+		neuron_label_counts = torch.zeros(self.som_height * self.som_width, 10, dtype=torch.int)
+		for i in range(data_point_count):
+			bmu_index = bmu_indices[i].item()
+			neuron_label_counts[bmu_index, data_source.train_labels[i]] += 1
+		neuron_labels = torch.argmax(neuron_label_counts, dim=-1)
 
-		# # get accuracy, precision, recall, f1-score by comparing actual labels with predicted labels
-		# accuracy = accuracy_score(data_source.test_labels, predicted_labels)
-		# precision = precision_score(data_source.test_labels, predicted_labels, average='weighted')
-		# recall = recall_score(data_source.test_labels, predicted_labels, average='weighted')
-		# f1 = f1_score(data_source.test_labels, predicted_labels, average='weighted')
+		bmu_indices = torch.argmin(test_dists, dim=-1)
+		predicted_labels = neuron_labels[bmu_indices].squeeze()
 
-		# metrics = {"loss": loss, "accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+		# get accuracy, precision, recall, f1-score by comparing actual labels with predicted labels
+		accuracy = accuracy_score(data_source.test_labels[:test_data_point_count], predicted_labels)
+		precision = precision_score(data_source.test_labels[:test_data_point_count], predicted_labels, average='weighted')
+		recall = recall_score(data_source.test_labels[:test_data_point_count], predicted_labels, average='weighted')
+		f1 = f1_score(data_source.test_labels[:test_data_point_count], predicted_labels, average='weighted')
+
+		cm = wandb.plot.confusion_matrix(probs=None, y_true=data_source.test_labels[:test_data_point_count], preds=predicted_labels.numpy(), class_names=[str(i) for i in range(10)])
+
+		metrics = {"loss": loss, "accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1, "confusion_matrix": cm}
 		return metrics
 
 # %%
-wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}", mode="disabled")
+wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}") #, mode="disabled")
 
 som_shape = (7, 7)
 alpha = 0.2
@@ -227,30 +259,55 @@ wandb.config.update({
 	"epochs": epochs
 })
 
-metrics = som.train_som(data_source, epochs)
+metrics = som.train_som(data_source, epochs, use_precision=True)
 
 wandb.finish()
 # %%
-from patternmachine.similarity_utils import _overlap_similarity
-# test overlap_similarity
+from patternmachine.similarity_utils import _overlap_similarity, overlap_similarity_exp_memoized, overlap_similarity_lin_memoized
 x = torch.linspace(0.0, 1.0, 100).unsqueeze(0).expand(100, 100)
-plt.imshow(x, cmap="gray")
+plt.title("x")
+plt.imshow(x)
 plt.show()
 
-y = x.clone().transpose(0, 1)
-plt.imshow(y, cmap="gray")
+plt.title("x_precision")
+x_precision = x.clone().transpose(0, 1)
+plt.imshow(x_precision)
 plt.show()
 
-plt.imshow(1-(x-y).abs(), cmap="gray")
+y = torch.ones_like(x) * 0.5
+y_precision = torch.ones_like(x_precision) * 1
+
+plt.title("Overlap similarity")
+sim = _overlap_similarity(x, x_precision, y, y_precision)
+# sim = (sim * (x_precision * y_precision).clamp_max_(1.0)).pow(0.4)
+plt.imshow(sim, vmin=0.0, vmax=1.0)
 plt.show()
 
-p = 0.3
+plt.title("Precision weighted abs difference")
+max_precision = torch.maximum(x_precision, y_precision)
+min_precision = torch.minimum(x_precision, y_precision)
 
-plt.imshow(overlap_similarity(x, torch.ones_like(x) * p, y, torch.ones_like(x) * p), cmap="gray")
+plt.title("max_precision")
+plt.imshow(max_precision, vmin=0.0, vmax=1.0)
 plt.show()
 
-# plt.imshow(_overlap_similarity(x, torch.ones_like(x) * p, y, torch.ones_like(x) * p), cmap="gray")
-# plt.show()
+plt.title("min_precision")
+plt.imshow(min_precision, vmin=0.0, vmax=1.0)
+plt.show()
 
+plt.title("x_precision * y_precision")
+plt.imshow(x_precision * y_precision, vmin=0.0, vmax=1.0)
+plt.show()
+
+
+diff = (x-y).abs()
+sim = 1-diff
+sim /= (x_precision * y_precision + 0.4).pow(0.3)
+# sim = (sim - 0.5) * (x_precision * y_precision) + 0.5
+
+# sim = (sim + 0.9) * max_precision - 0.9
+# sim = (sim - 0.3) * (max_precision - min_precision) + 0.3
+plt.imshow(sim, vmin=0.0, vmax=1.0)
+plt.show()
 
 # %%
