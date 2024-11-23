@@ -18,3 +18,10 @@ A few interesting notebooks -
 - [Domain quantization / Information density normalization](https://github.com/amolk/AGI-experiments/blob/master/Domain%20Quantization/03%20-%20Domain%20quantization%203.ipynb): Each input is represented as a histogram. The model then adjusts the bins such that they are closely packed where many data points are present, i.e. precision follows information density. The model transforms input such that if input follows the learned distribution, the output is piecewise linear, which might help downstream layers to learn better.
 - What is a good looking distribution? - [This notebook](https://github.com/amolk/AGI-experiments/blob/master/Free%20Energy%20Minimization%20Framework/12/16.1%20calculate%20precision%20of%20scaled%20pdf.ipynb) explores metrics to quantify if a distribution is good looking, i.e. has maximum signal to noise ratio.
 - [Active dendrite models](https://github.com/amolk/AGI-experiments/blob/master/Active%20Synapse/01%20active%20synapse.ipynb): This script explores how an active dendrite based model could produce sparse latent representation of inputs.
+
+# Notes on various approaches explored
+
+## Active dendrite framework
+
+The main idea behind the active dendrite framework is to make neurons more prone to fire when appropriate context is received. This could be a mechanism for mixing top down predictions with bottom up signal. Top down predictions would make certain set of neurons prone to firing through active dendrite activation, and the patterns that these neurons are sensitive to can then drive network activity. This is equivalent to selectively attending to predicted parts of the signal. This is a likely mechanism behind attention when we try to hear someone speak in a noisy environment.
+

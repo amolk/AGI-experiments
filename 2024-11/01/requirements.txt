@@ -1,0 +1,6 @@
+numpy
+pytorch-lightning
+requests
+torch
+matplotlib
+pytorch-lightning[extra]

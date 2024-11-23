@@ -242,8 +242,8 @@ class SOM(nn.Module):
 # %%
 wandb.init(project=PROJECT_NAME, name=f"{EXPERIMENT_NAME}_{wandb.util.generate_id()}") #, mode="disabled")
 
-som_shape = (7, 7)
-alpha = 0.2
+som_shape = (30, 30)
+alpha = 0.1
 sigma = 0.8
 epochs = 3
 som = SOM(*som_shape, data_source.height, data_source.width, sigma=sigma, alpha=alpha,
@@ -259,10 +259,10 @@ wandb.config.update({
 	"epochs": epochs
 })
 
-metrics = som.train_som(data_source, epochs, use_precision=True)
+metrics = som.train_som(data_source, epochs, use_precision=False)
 
 wandb.finish()
-# %%
+	# %%
 from patternmachine.similarity_utils import _overlap_similarity, overlap_similarity_exp_memoized, overlap_similarity_lin_memoized
 x = torch.linspace(0.0, 1.0, 100).unsqueeze(0).expand(100, 100)
 plt.title("x")
